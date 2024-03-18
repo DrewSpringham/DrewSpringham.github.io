@@ -9,4 +9,4 @@ redirect_from:
 
 {% include base_path %}
 
-You can find my academic CV [here](https://drewspringham.github.io/AcademicCV.pdf)
+You can find my academic CV [here](https://drewspringham.github.io/files/AcademicCV.pdf)

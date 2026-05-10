@@ -36,6 +36,10 @@
     #intersection-btn.active { background: #2E7D32; color: white; }
     #direct-btn { border-color: #6A1B9A; color: #6A1B9A; }
     #direct-btn.active { background: #6A1B9A; color: white; }
+    #rightmove-btn { border-color: #00deb6; color: #007a65; }
+    #rightmove-btn:hover { background: #00deb6; color: white; }
+    #zoopla-btn { border-color: #8c1d82; color: #8c1d82; }
+    #zoopla-btn:hover { background: #8c1d82; color: white; }
     #meta { font-size: 11px; color: #888; white-space: nowrap; }
     #map { flex: 1; }
   </style>
@@ -46,11 +50,13 @@
   <h1>&#127968; Flat finder</h1>
   <div class="controls" id="controls"></div>
   <label class="checkbox-group">
-    <input type="checkbox" id="exclude-zone1" onchange="onCheckbox()">
+    <input type="checkbox" id="exclude-zone1" onchange="onCheckbox()" checked>
     Exclude Zone 1
   </label>
-  <button id="intersection-btn" class="toggle-btn" onclick="toggleIntersection()">Sweet spot only</button>
-  <button id="direct-btn" class="toggle-btn" onclick="toggleDirect()">No changes</button>
+  <button id="intersection-btn" class="toggle-btn active" onclick="toggleIntersection()">Sweet spot only</button>
+  <button id="direct-btn" class="toggle-btn active" onclick="toggleDirect()">No changes</button>
+  <button id="rightmove-btn" class="toggle-btn" onclick="openRightmove()">Search Rightmove</button>
+  <button id="zoopla-btn" class="toggle-btn" onclick="openZoopla()">Search Zoopla</button>
   <span id="meta">Generated: 10 May 2026</span>
 </header>
 <div id="map"></div>
@@ -64,8 +70,8 @@ const { jobs, stations, defaults } = DATA;
 let maxMins = jobs.map(() => defaults.max_mins);
 const maxWalk = defaults.max_walk;
 const INTERSECTION_COLOR = "#2E7D32";
-let intersectionOnly = false;
-let directOnly = false;
+let intersectionOnly = true;
+let directOnly = true;
 
 function walkRadiusKm(bufMins) {
   return bufMins * 60 * defaults.walk_speed_mps / 1000;
@@ -125,6 +131,80 @@ function toggleDirect() {
   directOnly = !directOnly;
   document.getElementById("direct-btn").classList.toggle("active", directOnly);
   render();
+}
+
+// â”€â”€ Property search helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function _encodePolylineVal(v) {
+  v = v < 0 ? ~(v << 1) : (v << 1);
+  let s = '';
+  while (v >= 0x20) { s += String.fromCharCode((0x20 | (v & 0x1f)) + 63); v >>= 5; }
+  return s + String.fromCharCode(v + 63);
+}
+
+function encodePolyline(coords) {
+  let out = '', pLat = 0, pLon = 0;
+  for (const [lat, lon] of coords) {
+    const iLat = Math.round(lat * 1e5), iLon = Math.round(lon * 1e5);
+    out += _encodePolylineVal(iLat - pLat) + _encodePolylineVal(iLon - pLon);
+    pLat = iLat; pLon = iLon;
+  }
+  return out;
+}
+
+function computeSearchPolyline() {
+  const excludeZone1 = document.getElementById("exclude-zone1").checked;
+  const zones = jobs.map((_, i) => computeZone(i, excludeZone1));
+  if (!zones[0] || !zones[1]) return null;
+
+  let ix;
+  try { ix = turf.intersect(zones[0], zones[1]); } catch (e) { ix = null; }
+  if (!ix) return null;
+
+  const simple = turf.simplify(ix, { tolerance: 0.001, highQuality: false });
+  let merged;
+  if (simple.geometry.type === "Polygon") {
+    merged = simple;
+  } else {
+    const allParts = simple.geometry.coordinates.map(coords => {
+      const poly = turf.polygon(coords);
+      const c = turf.centroid(poly).geometry.coordinates;
+      return { poly, c, area: turf.area(poly) };
+    });
+    const maxArea = Math.max(...allParts.map(p => p.area));
+    const parts = allParts.filter(p => p.area >= maxArea * 0.05);
+    parts.sort((a, b) => a.c[0] - b.c[0]);
+
+    merged = parts[0].poly;
+    for (let i = 1; i < parts.length; i++) {
+      const bridge = turf.buffer(
+        turf.lineString([parts[i - 1].c, parts[i].c]),
+        0.01, { units: "kilometers", steps: 2 }
+      );
+      merged = turf.union(turf.union(merged, bridge), parts[i].poly);
+    }
+    if (merged.geometry.type !== "Polygon") {
+      const biggest = merged.geometry.coordinates.reduce((a, b) => a[0].length > b[0].length ? a : b);
+      merged = turf.polygon(biggest);
+    }
+  }
+
+  const ring = merged.geometry.coordinates[0];
+  return encodePolyline(ring.map(([lon, lat]) => [lat, lon]));
+}
+
+function openRightmove() {
+  const polyline = computeSearchPolyline();
+  if (!polyline) { alert("No intersection to search â€” try wider time limits."); return; }
+  const locationId = `USERDEFINEDAREA^${JSON.stringify({ polylines: polyline })}`;
+  const url = `https://www.rightmove.co.uk/property-to-rent/map.html?locationIdentifier=${encodeURIComponent(locationId)}&viewType=MAP&numberOfPropertiesPerPage=95&maxPrice=2100&minBedrooms=2&channel=RENT&transactionType=LETTING&sortType=6`;
+  window.open(url, "_blank");
+}
+
+function openZoopla() {
+  const polyline = computeSearchPolyline();
+  if (!polyline) { alert("No intersection to search â€” try wider time limits."); return; }
+  const url = `https://www.zoopla.co.uk/to-rent/map/property/uk?beds_min=2&price_frequency=per_month&price_max=2100&search_source=to-rent&polyenc=${encodeURIComponent(polyline)}&radius=0`;
+  window.open(url, "_blank");
 }
 
 // â”€â”€ Geometry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

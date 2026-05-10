@@ -173,17 +173,52 @@ function computeSearchPolyline() {
       const c = turf.centroid(poly).geometry.coordinates;
       return { poly, c, area: turf.area(poly) };
     });
-    const maxArea = Math.max(...allParts.map(p => p.area));
-    const parts = allParts.filter(p => p.area >= maxArea * 0.05);
-    parts.sort((a, b) => a.c[0] - b.c[0]);
+    const minRadiusKm = walkRadiusKm(5);
+    const minArea = Math.PI * minRadiusKm * minRadiusKm * 1e6; // mÂ²
+    const parts = allParts.filter(p => p.area >= minArea);
 
-    merged = parts[0].poly;
-    for (let i = 1; i < parts.length; i++) {
+    // Nearest perimeter points between two polygons
+    function perimeterNearest(polyA, polyB) {
+      const lineB = turf.polygonToLine(polyB);
+      let bestDist = Infinity, bestPtA = null, bestPtB = null;
+      for (const coord of polyA.geometry.coordinates[0]) {
+        const pt = turf.point(coord);
+        const nearest = turf.nearestPointOnLine(lineB, pt);
+        if (nearest.properties.dist < bestDist) {
+          bestDist = nearest.properties.dist;
+          bestPtA = coord;
+          bestPtB = nearest.geometry.coordinates;
+        }
+      }
+      return { dist: bestDist, ptA: bestPtA, ptB: bestPtB };
+    }
+
+    // Prim's MST using perimeter distances
+    const n = parts.length;
+    const inMST = new Array(n).fill(false);
+    const mstEdges = []; // { i, j, ptA, ptB }
+    inMST[0] = true;
+    for (let step = 0; step < n - 1; step++) {
+      let best = { dist: Infinity, i: -1, j: -1, ptA: null, ptB: null };
+      for (let i = 0; i < n; i++) {
+        if (!inMST[i]) continue;
+        for (let j = 0; j < n; j++) {
+          if (inMST[j]) continue;
+          const { dist, ptA, ptB } = perimeterNearest(parts[i].poly, parts[j].poly);
+          if (dist < best.dist) best = { dist, i, j, ptA, ptB };
+        }
+      }
+      inMST[best.j] = true;
+      mstEdges.push(best);
+    }
+
+    merged = parts.reduce((acc, p) => turf.union(acc, p.poly), parts[0].poly);
+    for (const { ptA, ptB } of mstEdges) {
       const bridge = turf.buffer(
-        turf.lineString([parts[i - 1].c, parts[i].c]),
+        turf.lineString([ptA, ptB]),
         0.01, { units: "kilometers", steps: 2 }
       );
-      merged = turf.union(turf.union(merged, bridge), parts[i].poly);
+      merged = turf.union(merged, bridge);
     }
     if (merged.geometry.type !== "Polygon") {
       const biggest = merged.geometry.coordinates.reduce((a, b) => a[0].length > b[0].length ? a : b);

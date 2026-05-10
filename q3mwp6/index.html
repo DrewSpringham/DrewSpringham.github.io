@@ -40,6 +40,8 @@
     #rightmove-btn:hover { background: #00deb6; color: white; }
     #zoopla-btn { border-color: #8c1d82; color: #8c1d82; }
     #zoopla-btn:hover { background: #8c1d82; color: white; }
+    #otm-btn { border-color: #e8452c; color: #e8452c; }
+    #otm-btn:hover { background: #e8452c; color: white; }
     #meta { font-size: 11px; color: #888; white-space: nowrap; }
     #map { flex: 1; }
   </style>
@@ -57,6 +59,7 @@
   <button id="direct-btn" class="toggle-btn active" onclick="toggleDirect()">No changes</button>
   <button id="rightmove-btn" class="toggle-btn" onclick="openRightmove()">Search Rightmove</button>
   <button id="zoopla-btn" class="toggle-btn" onclick="openZoopla()">Search Zoopla</button>
+  <button id="otm-btn" class="toggle-btn" onclick="openOnTheMarket()">Search OnTheMarket</button>
   <span id="meta">Generated: 10 May 2026</span>
 </header>
 <div id="map"></div>
@@ -204,6 +207,13 @@ function openZoopla() {
   const polyline = computeSearchPolyline();
   if (!polyline) { alert("No intersection to search â€” try wider time limits."); return; }
   const url = `https://www.zoopla.co.uk/to-rent/map/property/uk?beds_min=2&price_frequency=per_month&price_max=2100&search_source=to-rent&polyenc=${encodeURIComponent(polyline)}&radius=0`;
+  window.open(url, "_blank");
+}
+
+function openOnTheMarket() {
+  const polyline = computeSearchPolyline();
+  if (!polyline) { alert("No intersection to search â€” try wider time limits."); return; }
+  const url = `https://www.onthemarket.com/to-rent/property/london/?max-price=2100&min-bedrooms=2&polygons0=${encodeURIComponent(polyline)}&view=map-list`;
   window.open(url, "_blank");
 }
 

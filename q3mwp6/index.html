@@ -139,6 +139,7 @@ function toggleHeader() {
   const btn = document.getElementById("header-toggle");
   const collapsed = body.classList.toggle("collapsed");
   btn.textContent = collapsed ? "â–¼" : "â–²";
+  setTimeout(() => map.invalidateSize(), 0);
 }
 function toggleIntersection() {
   intersectionOnly = !intersectionOnly;

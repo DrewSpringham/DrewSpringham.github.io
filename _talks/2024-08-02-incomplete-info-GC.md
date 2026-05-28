@@ -2,7 +2,7 @@
 title: "Fair multiwinner elections with incomplete information"
 collection: talks
 type: "Talk"
-permalink: _/talks/2024-08-02-incomplete-info-GC.md
+permalink: /talks/2024-08-02-incomplete-info-GC
 venue: "Goodenough College"
 date: 2024-08-02
 location: "London, UK"
